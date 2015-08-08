@@ -695,6 +695,7 @@ function($scope, $log, $q, $http, flexiListService) {
 			function(data){
 				
 				dataLoaded = true;
+				$scope.list.server_response = data;
 				
 				if (data.result == 'ERROR')
 				{
