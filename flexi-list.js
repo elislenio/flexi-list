@@ -552,9 +552,12 @@ function($scope, $log, $q, $http, flexiListService) {
 			if (options.method == 'GET')
 				$http({
 					method: 'GET',
-					url: options.listURL,
+					url: options.listURL + '?' + jQuery.param(post_data)
+					/*
+					//Does not work as expected
 					params: post_data,
 					paramSerializer: '$httpParamSerializerJQLike'
+					*/
 				}).success(function(data, status) {
 					deferred.resolve(data);
 				}).error(function(data, status){
@@ -564,9 +567,13 @@ function($scope, $log, $q, $http, flexiListService) {
 				$http({
 					method: 'POST',
 					url: options.listURL,
-					params: post_data,
-					paramSerializer: '$httpParamSerializerJQLike',
+					data: jQuery.param(post_data),
 					headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+					/*
+					//Does not work as expected
+					params: post_data,
+					paramSerializer: '$httpParamSerializerJQLike'
+					*/
 				}).success(function(data, status) {
 					deferred.resolve(data);
 				}).error(function(data, status){
