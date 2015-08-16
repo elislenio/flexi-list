@@ -1,5 +1,5 @@
 'use strict';
-
+	
 /**
 * @fileOverview
 * @author Guido Donnari (gdonnari@yahoo.com.ar)
@@ -43,7 +43,7 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 		},
 		
 		// Filter the dataset
-		filterDataset: function(dataset, where)
+		filterDataset: function(dataset, where, log)
 		{
 			var filtered_ds = [];
 			var field;
@@ -68,14 +68,20 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 						pattern = where[j].value;
 						option = where[j].option;
 						
+						
+						if (! field)	continue;
+						if (! condition)	continue;
+						//if (! pattern)	continue;
+						//if (! value)	continue;
+						
 						try {
 							passed = $filter(condition)(value, pattern, option);
 						} catch (e){
-							$log.log(options.logid + ' - flexiListService: filter exception at ', e);
+							if (log.err) $log.log(log.id + ' - flexiListService: filter exception at ', e);
 							passed = true;
 						}
 						
-						//$log.log(options.logid + ' - filterDataset: value=' + value + ' condition=' + condition + ' pattern=' + pattern + ' passed=' + passed);
+						if (log.debug)	$log.log(log.id + ' - filterDataset: value=' + value + ' condition=' + condition + ' pattern=' + pattern + ' passed=' + passed);
 						if (! passed) break;
 					}
 					
@@ -106,9 +112,9 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 			return limited_ds;
 		},
 		
-		processDataset: function(dataset, where, orderby, limit)
+		processDataset: function(dataset, where, orderby, limit, log)
 		{
-			var filtered_ds = this.filterDataset(dataset, where);
+			var filtered_ds = this.filterDataset(dataset, where, log);
 			var ordered_ds = this.sortDataset(filtered_ds, orderby);
 			var limited_ds = this.limitDataset(ordered_ds, limit);
 			return limited_ds;
@@ -179,14 +185,14 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
  * @description 
  * Exposes the API to the templates.
  */
-flexiList.controller('flMainCtrl', ['$scope', '$log', '$q', '$http', 'flexiListService', 
-function($scope, $log, $q, $http, flexiListService) {
+flexiList.controller('flMainCtrl', ['$scope', '$log', '$q', '$http', '$filter', 'flexiListService', 
+function($scope, $log, $q, $http, $filter, flexiListService) {
 	
 	var options = {
 		data: false,
 		jsonFile: false,
 		listURL: false,
-		autoLoad: true,
+		autoload: true,
 		selectable: true,
 		multiselect: true,
 		limit: false,
@@ -194,6 +200,7 @@ function($scope, $log, $q, $http, flexiListService) {
 		sortable: true,
 		orderby: [],
 		pagination: true,
+		pagination_clear_selection: true,
 		paginationOnClient: false,
 		pagesize: 10,
 		pages: 5,
@@ -202,10 +209,10 @@ function($scope, $log, $q, $http, flexiListService) {
 		onRecordsLoaded: false,
 		onLoadError: false,
 		overlayToggle: false,
-		logid: 'FL'
+		log: {id: 'FL', err: true, debug: true}
 	};
 	
-	var dataLoaded = false;
+	var loadedDS = false;
 	var ds_length;
 	var records = [];
 	var offset = 0;
@@ -216,7 +223,7 @@ function($scope, $log, $q, $http, flexiListService) {
 	{
 		if (!$scope.list)
 		{
-			$log.log(options.logid + ' - undefined scope.');
+			if (options.log.err) $log.log(options.log.id + ' - undefined scope.');
 			return;
 		}
 		
@@ -227,13 +234,16 @@ function($scope, $log, $q, $http, flexiListService) {
 		* @param p_options options.
 		*/  
 		$scope.$on('loadData', function(event, p_options) {
-			/*
-			// TODO: nested sorts
-			if (p_options.orderby_append)
-				addOrderby(p_options.orderby);
-			*/
 			angular.extend(options, p_options);
 			loadData();
+		});
+		
+		/** Event listener to operate on loaded data
+		* @public
+		* @param p_options options.
+		*/  
+		$scope.$on('change', function(event, p_options) {
+			change(p_options);
 		});
 		
 		/** Returns the select enabled status
@@ -276,7 +286,7 @@ function($scope, $log, $q, $http, flexiListService) {
 		* @public
 		*/  
 		$scope.list.noResults = function () {
-			return (records.length == 0 && dataLoaded);
+			return (records.length == 0 && loadedDS);
 		};
 		
 		/** Checks whenever the loaded dataset has no records
@@ -290,8 +300,8 @@ function($scope, $log, $q, $http, flexiListService) {
 		if (options.sortable) makeScopeSortable();
 		if (options.pagination) makeScopePagination();
 		if (options.selectable) makeScopeSelectable();
-		if (options.autoLoad) loadData();
-	}
+		if (options.autoload) loadData();
+	};
 	
 	//************************************************************
 	// Sortable
@@ -379,17 +389,20 @@ function($scope, $log, $q, $http, flexiListService) {
 			return true;
 		};
 		
+		/** Registers a checkbox change
+		* @public
+		*/  
+		$scope.list.registerSelection = function (record) {
+			if (record.flSelected) rowSelect(record, true);
+			else rowUnselect(record, true);
+		};
+		
 		/** Toggles row selection
 		* @public
 		*/  
 		$scope.list.rowToggleSelect = function (record) {
-			
-			if (record.readonly)	return;
-			
-			if (record.flSelected)
-				rowUnselect(record);
-			else
-				rowSelect(record);
+			if (record.flSelected) rowUnselect(record, false);
+			else rowSelect(record, false);
 		};
 		
 		if (options.multiselect)
@@ -397,25 +410,13 @@ function($scope, $log, $q, $http, flexiListService) {
 			/** Enables selection of multiple rows
 			* @public
 			*/		
-			$scope.list.selectAll = function () {
+			$scope.list.toggleSelectAll = function () {
 			
 				if (! records)	return;
 				
-				// Reverse selected state
+				// Reverse selected state and apply
 				allSelected = (! allSelected);
-				selectedCount = 0;
-				angular.forEach(records, function (record) 
-				{
-					if (! record.readonly)
-					{
-						if (allSelected)
-							rowSelect(record);
-						else
-							rowUnselect(record);
-					}
-				});
-				
-				if (! allSelected) selectedCount = 0;
+				selectionApplyAll(allSelected);
 			};
 		}
 		
@@ -441,10 +442,26 @@ function($scope, $log, $q, $http, flexiListService) {
 			
 			return selection;
 		};
-	}
+	};
 	
-	function rowSelect(record)
+	function selectionApplyAll(selected)
 	{
+		angular.forEach(client_ds, function (record) 
+		{
+			if (selected)
+				rowSelect(record, false);
+			else
+				rowUnselect(record, false);
+		});
+	};
+	
+	function rowSelect(record, force)
+	{
+		if (record.readonly) return;
+		
+		if (! force)
+			if (record.flSelected) return;
+		
 		if (options.multiselect)
 		{
 			record.flSelected = true;
@@ -459,8 +476,13 @@ function($scope, $log, $q, $http, flexiListService) {
 		}
 	}
 	
-	function rowUnselect(record)
+	function rowUnselect(record, force)
 	{
+		if (record.readonly) return;
+		
+		if (! force)
+			if (! record.flSelected) return;
+			
 		if (options.multiselect)
 		{
 			record.flSelected = false;
@@ -503,6 +525,10 @@ function($scope, $log, $q, $http, flexiListService) {
 	
 	function getPage(pagenum)
 	{
+		// Unselect rows that are not in the current page
+		if (options.selectable && options.pagination_clear_selection)
+			selectionApplyAll(false);
+		
 		if (pagenum < 1) return;
 		if (pagenum > $scope.list.pagination_info.totalpages) return;
 		
@@ -522,37 +548,31 @@ function($scope, $log, $q, $http, flexiListService) {
 	//************************************************************
 	// Data load
 	//************************************************************
-	function request()
+	function requestDB()
 	{
 		var deferred = $q.defer();
 		
 		var post_data = {};
-		post_data.limited = 0;
-		
 		post_data.where = options.where;
 		post_data.orderby = options.orderby;
+		if (options.limit) post_data.limit = options.limit;
 		
-		if (options.limit)
+		if (options.pagination && ! options.paginationOnClient)
 		{
-			post_data.limit = options.limit;
-			post_data.limited = 1;
-			post_data.offset = 0;
-		}
-		else
-		{
-			if (options.pagination && ! options.paginationOnClient)
-			{
-				post_data.limit = options.pagesize;
-				post_data.offset = offset;
-			}
+			post_data.offset = offset;
+			post_data.pagesize = options.pagesize;
 		}
 		
 		if (options.urlencoded)
 		{
 			if (options.method == 'GET')
+			{	
+				var v_url = options.listURL + '?' + jQuery.param(post_data);
+				if (options.log.debug) $log.log(options.log.id + ' URL: ' + v_url);
+			
 				$http({
 					method: 'GET',
-					url: options.listURL + '?' + jQuery.param(post_data)
+					url: v_url
 					/*
 					//Does not work as expected
 					params: post_data,
@@ -563,7 +583,10 @@ function($scope, $log, $q, $http, flexiListService) {
 				}).error(function(data, status){
 					deferred.reject('ERROR: ' + status);
 				});
+			
+			}
 			else
+			{
 				$http({
 					method: 'POST',
 					url: options.listURL,
@@ -579,6 +602,7 @@ function($scope, $log, $q, $http, flexiListService) {
 				}).error(function(data, status){
 					deferred.reject('ERROR: ' + status);
 				});
+			}
 		}
 		else
 		{
@@ -623,13 +647,21 @@ function($scope, $log, $q, $http, flexiListService) {
 	function loadInlineData()
 	{
 		options.paginationOnClient = true;
-		dataLoaded = true;
+		loadedDS = options.data;
 		
+		if (! loadedDS)
+		{
+			loadedDS = [];
+			if (options.log.err) $log.log(options.log.id + ' - Load Error.');
+			if (options.onLoadError) options.onLoadError(data);
+		}
+				
 		client_ds = flexiListService.processDataset(
 			options.data, 
 			options.where,
 			options.orderby,
-			options.limit
+			options.limit,
+			options.log
 		);
 		
 		ds_length = client_ds.length;
@@ -647,6 +679,29 @@ function($scope, $log, $q, $http, flexiListService) {
 		if (options.onRecordsLoaded) options.onRecordsLoaded(records);
 	}
 	
+	function processDataset()
+	{
+		client_ds = flexiListService.processDataset(
+			loadedDS, 
+			options.where,
+			options.orderby,
+			options.limit,
+			options.log
+		);
+		
+		ds_length = client_ds.length;
+		
+		if (options.pagination)
+		{
+			records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
+			$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+		}
+		else
+		{
+			records = client_ds;
+		}
+	}
+	
 	function loadJsonFile()
 	{
 		options.paginationOnClient = true;
@@ -655,55 +710,49 @@ function($scope, $log, $q, $http, flexiListService) {
 		promise.then(
 			function(data){
 				
-				dataLoaded = true;
+				if (options.log.debug) $log.log(options.log.id + ' - Data: ' + $filter('json')(data));
 				
-				client_ds = flexiListService.processDataset(
-					data, 
-					options.where,
-					options.orderby,
-					options.limit
-				);
-				
-				ds_length = client_ds.length;
-				
-				if (options.pagination)
+				if (! data)
 				{
-					records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-					$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+					data = [];
+					if (options.log.err) $log.log(options.log.id + ' - Load Error.');
+					if (options.onLoadError) options.onLoadError(data);
 				}
-				else
-				{
-					records = client_ds;
-				}
+				
+				loadedDS = data;
+				processDataset();
 				
 				if (options.onRecordsLoaded) options.onRecordsLoaded(records);
 			}, 
 			function(reason) {
-				dataLoaded = true;
+				loadedDS = [];
 				records = [];
-				$log.log(options.logid + ' - Load Error: ' + reason);
+				if (options.log.err) $log.log(options.log.id + ' - Load Error: ' + reason);
 				if (options.onLoadError) options.onLoadError({result: 'ERROR', message: reason});
 			}
 		);
-	}
+	};
 	
 	function loadFromDb()
 	{
-		var ajax = request();
+		var ajax = requestDB();
 		
 		ajax.then(
 			function(data){
 				
-				dataLoaded = true;
 				$scope.list.server_response = data;
+				if (options.log.debug) $log.log(options.log.id + ' - Data: ' + $filter('json')(data));
 				
-				if (data.result == 'ERROR')
+				if (! data || data.result == 'ERROR')
 				{
-					$log.log(options.logid + ' - Load Error.');
+					data = {};
+					if (options.log.err) $log.log(options.log.id + ' - Load Error.');
 					if (options.onLoadError) options.onLoadError(data);
 				}
 				
 				if (! data.records) data.records = [];
+				
+				loadedDS = data.records;
 				
 				if (data.orderby) setOrderby(data.orderby);
 				
@@ -733,17 +782,33 @@ function($scope, $log, $q, $http, flexiListService) {
 				if (options.onRecordsLoaded) options.onRecordsLoaded(records);
 			}, 
 			function(reason) {
-				dataLoaded = true;
+				loadedDS = [];
 				records = [];
-				$log.log(options.logid + ' - Load Error: ' + reason);
+				if (options.log.err) $log.log(options.log.id + ' - Load Error: ' + reason);
 				if (options.onLoadError) options.onLoadError({result: 'ERROR', message: reason});
 			}
 		);
-	}
+	};
+	
+	function change(p_options)
+	{
+		angular.extend(options, p_options);
+		if (options.overlayToggle)	options.overlayToggle();
+		
+		// Unselect all rows
+		if (options.selectable) selectionApplyAll(false);
+		// Reset to first page
+		offset = 0;
+		
+		processDataset();
+		if (options.overlayToggle)	options.overlayToggle();
+	};
 	
 	function loadData()
 	{
 		if (options.overlayToggle)	options.overlayToggle();
+		
+		selectedCount = 0;
 		
 		if (options.data)
 		{
@@ -759,11 +824,11 @@ function($scope, $log, $q, $http, flexiListService) {
 		}
 		else
 		{
-			$log.log(options.logid + ' - undefined data source.');
+			if (options.log.err) $log.log(options.log.id + ' - undefined data source.');
 		}
 		
 		if (options.overlayToggle)	options.overlayToggle();
-	}
+	};
 }]);
 
 
@@ -827,6 +892,7 @@ flexiList.directive('flFieldDisplay', function() {
  */
 flexiList.filter('eq', function() {
 	return function(value, pattern, insensitive) {
+		if (value == undefined || pattern == undefined) return true;
 		if (insensitive)
 			return (value.toLowerCase() == pattern.toLowerCase());
 		else
@@ -842,6 +908,7 @@ flexiList.filter('eq', function() {
  */
 flexiList.filter('ne', function() {
 	return function(value, pattern) {
+		if (value == undefined || pattern == undefined) return true;
 		return (value != pattern);
 	};
 });
@@ -854,6 +921,7 @@ flexiList.filter('ne', function() {
  */
 flexiList.filter('gt', function() {
 	return function(value, pattern) {
+		if (value == undefined || pattern == undefined) return true;
 		return (value > pattern);
 	};
 });
@@ -866,6 +934,7 @@ flexiList.filter('gt', function() {
  */
 flexiList.filter('ge', function() {
 	return function(value, pattern) {
+		if (value == undefined || pattern == undefined) return true;
 		return (value >= pattern);
 	};
 });
@@ -878,6 +947,7 @@ flexiList.filter('ge', function() {
  */
 flexiList.filter('lt', function() {
 	return function(value, pattern) {
+		if (value == undefined || pattern == undefined) return true;
 		return (value < pattern);
 	};
 });
@@ -890,6 +960,7 @@ flexiList.filter('lt', function() {
  */
 flexiList.filter('le', function() {
 	return function(value, pattern) {
+		if (value == undefined || pattern == undefined) return true;
 		return (value <= pattern);
 	};
 });
@@ -902,6 +973,7 @@ flexiList.filter('le', function() {
  */
 flexiList.filter('like_l', function() {
 	return function(value, pattern, insensitive) {
+		if (value == undefined || pattern == undefined) return true;
 		if (insensitive)
 			return (value.toLowerCase().indexOf(pattern.toLowerCase(), value.length - pattern.length) !== -1);
 		else
@@ -917,6 +989,7 @@ flexiList.filter('like_l', function() {
  */
 flexiList.filter('like_r', function() {
 	return function(value, pattern, insensitive) {
+		if (value == undefined || pattern == undefined) return true;
 		if (insensitive)
 			return (value.toLowerCase().indexOf(pattern.toLowerCase()) === 0);
 		else
@@ -932,6 +1005,7 @@ flexiList.filter('like_r', function() {
  */
 flexiList.filter('like_b', function() {
 	return function(value, pattern, insensitive) {
+		if (value == undefined || pattern == undefined) return true;
 		if (insensitive)
 			return (value.toLowerCase().indexOf(pattern.toLowerCase()) !== -1);
 		else
@@ -947,6 +1021,7 @@ flexiList.filter('like_b', function() {
  */
 flexiList.filter('is_null', function() {
 	return function(value, pattern) {
+		if (value == undefined) return true;
 		return (value.toString().length == 0);
 	};
 });
@@ -959,6 +1034,7 @@ flexiList.filter('is_null', function() {
  */
 flexiList.filter('is_not_null', function() {
 	return function(value, pattern) {
+		if (value == undefined) return false;
 		return (value.toString().length > 0);
 	};
 });
@@ -971,7 +1047,14 @@ flexiList.filter('is_not_null', function() {
  */
 flexiList.filter('regexp', function() {
 	return function(value, pattern, modifier) {
+		if (value == undefined || pattern == undefined) return true;
 		var regex = new RegExp(pattern, modifier);
 		return regex.test(value);
 	};
 });
+
+/*
+// TODO: support for nested sorts at client side
+if (p_options.orderby_append)
+	addOrderby(p_options.orderby);
+*/
