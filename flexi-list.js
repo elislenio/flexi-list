@@ -200,8 +200,8 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		sortable: true,
 		orderby: [],
 		pagination: true,
-		pagination_clear_selection: true,
 		paginationOnClient: false,
+		pagination_clear_selection: true,
 		pagesize: 10,
 		pages: 5,
 		method: 'GET',
@@ -209,7 +209,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		onRecordsLoaded: false,
 		onLoadError: false,
 		overlayToggle: false,
-		log: {id: 'FL', err: true, debug: true}
+		log: {id: 'FL', err: false, debug: false}
 	};
 	
 	var loadedDS = false;
@@ -229,28 +229,42 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		
 		angular.extend(options, $scope.list.options);
 		
-		/** Event listener to trigger data loading
+		/** Trigger data loading
 		* @public
 		* @param p_options options.
-		*/  
-		$scope.$on('loadData', function(event, p_options) {
+		*/
+		$scope.list.loadData = function (p_options) {
 			angular.extend(options, p_options);
 			loadData();
-		});
+		};
 		
-		/** Event listener to operate on loaded data
+		/** Change options without reloading data
 		* @public
 		* @param p_options options.
-		*/  
-		$scope.$on('change', function(event, p_options) {
+		*/
+		$scope.list.change = function (p_options) {
 			change(p_options);
-		});
+		};
+		
+		/** Reloads data using the current options settings
+		* @public
+		*/  
+		$scope.list.refresh = function () {
+			loadData();
+		};
 		
 		/** Returns the select enabled status
 		* @public
 		*/  
 		$scope.list.selectEnabled = function () {
 			return options.selectable;
+		};
+		
+		/** Returns the select enabled status
+		* @public
+		*/  
+		$scope.list.multiselectEnabled = function () {
+			return (options.selectable && options.multiselect);
 		};
 		
 		/** Returns the pagination enabled status
@@ -268,11 +282,8 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		/** Returns the sort enabled status
 		* @public
 		*/  
-		$scope.list.sortEnabled = function (col) {
-			if (! options.sortable)	return false;
-			if (! col)	return options.sortable;
-			if (col.sortable == false)	return false;
-			return true;
+		$scope.list.sortEnabled = function () {
+			return options.sortable;
 		};
 		
 		/** Returns the records array
@@ -282,19 +293,11 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			return records;
 		};
 		
-		/** Checks whenever data was loaded
+		/** Returns true whenever the result set has no records
 		* @public
 		*/  
-		$scope.list.noResults = function () {
+		$scope.list.isEmpty = function () {
 			return (records.length == 0 && loadedDS);
-		};
-		
-		/** Checks whenever the loaded dataset has no records
-		* @public
-		*/  
-		$scope.list.notEmpty = function () {
-			if (records.length > 0) return true;
-			return false;
 		};
 		
 		if (options.sortable) makeScopeSortable();
@@ -306,13 +309,11 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	//************************************************************
 	// Sortable
 	//************************************************************
-	var sorted = {};
+	var sorted = [];
 	
 	function makeScopeSortable()
 	{
-		sorted = transformSorted();
-		
-		/** Checks whenever the list is sorted "asc" by a given field
+		/** Returns true whenever the list is sorted "asc" by the given field
 		* @public
 		*/  
 		$scope.list.isSortedAsc = function(field)
@@ -321,7 +322,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			return (sorted[field] == 'asc');
 		};
 		
-		/** Checks whenever the list is sorted "desc" by a given field
+		/** Returns true whenever the list is sorted "desc" by the given field
 		* @public
 		*/  
 		$scope.list.isSortedDesc = function(field)
@@ -362,12 +363,11 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	
 	function transformSorted()
 	{
-		if (! options.orderby) return;
+		var arr = [];
 		
-		var arr = {};
-		
-		for (var i=0; i < options.orderby.length; i++)
-			arr[options.orderby[i].field] = options.orderby[i].type;
+		if (options.orderby)
+			for (var i=0; i < options.orderby.length; i++)
+				arr[options.orderby[i].field] = options.orderby[i].type;
 		
 		return arr;
 	}
@@ -381,20 +381,12 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	
 	function makeScopeSelectable()
 	{
-		/** Checks whenever a given record was selected
+		/** Returns true whenever the given record is selected
 		* @public
 		*/  
 		$scope.list.isRowSelected = function (record) {
 			if (! record.flSelected )	return false;
 			return true;
-		};
-		
-		/** Registers a checkbox change
-		* @public
-		*/  
-		$scope.list.registerSelection = function (record) {
-			if (record.flSelected) rowSelect(record, true);
-			else rowUnselect(record, true);
 		};
 		
 		/** Toggles row selection
@@ -405,9 +397,24 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			else rowSelect(record, false);
 		};
 		
+		/** Triggers the validation of row selection after changing record.flSelected model.
+		* @public
+		*/
+		$scope.list.enforceSelection = function (record) {
+			if (record.flSelected) rowSelect(record, true);
+			else rowUnselect(record, true);
+		};
+		
+		/** Returns the next selection state for all rows
+		* @public
+		*/  
+		$scope.list.getToggleSelNextState = function () {
+			return allSelected;
+		};
+		
 		if (options.multiselect)
 		{
-			/** Enables selection of multiple rows
+			/** Toggles the selection state for all rows
 			* @public
 			*/		
 			$scope.list.toggleSelectAll = function () {
@@ -420,14 +427,14 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			};
 		}
 		
-		/** Returns the count of selected rows
+		/** Returns the selected rows count
 		* @public
 		*/  
 		$scope.list.getSelectedCount = function () {
 			return selectedCount;
 		};
 		
-		/** Returns selected rows array
+		/** Returns the selected rows array
 		* @public
 		*/  
 		$scope.list.getSelectedRows = function () {
@@ -504,21 +511,24 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	
 	function makeScopePagination()
 	{
+		/** Stores the pagination model
+		* @public
+		*/
 		$scope.list.pagination_info = {};
 		
-		/** Event listener to trigger page fetching
+		/** Triggers page change
 		* @public
 		* @param pagenum number of requested page.
-		*/  
-		$scope.$on('getPage', function(event, pagenum) {
+		*/
+		$scope.list.changePage = function (pagenum) {
 			getPage(pagenum);
-		});
+		};
 		
 		/** Changes the page size.
 		* @public
 		*/  
-		$scope.list.setPageSize = function(val) {
-			options.pagesize = val;
+		$scope.list.setPageSize = function(size) {
+			options.pagesize = size;
 			getPage(1);
 		}
 	}
@@ -676,6 +686,8 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			records = client_ds;
 		}
 		
+		sorted = transformSorted();
+		
 		if (options.onRecordsLoaded) options.onRecordsLoaded(records);
 	}
 	
@@ -721,6 +733,8 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				
 				loadedDS = data;
 				processDataset();
+				
+				sorted = transformSorted();
 				
 				if (options.onRecordsLoaded) options.onRecordsLoaded(records);
 			}, 
@@ -801,6 +815,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		offset = 0;
 		
 		processDataset();
+		sorted = transformSorted();
 		if (options.overlayToggle)	options.overlayToggle();
 	};
 	
