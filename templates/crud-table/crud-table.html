@@ -1,0 +1,144 @@
+<fl-main list="list"></fl-main>
+<treasure-overlay-spinner active="ct.busy">
+<!-- Toolbar -->
+<div class="row">
+	<div class="col-lg-12">
+		<div class="row" style="margin-bottom: 10px;">
+			<!-- Controls -->
+			<div class="col-lg-5">
+				<button type="button" class="btn btn-default" title="{{'Refresh'|translate}}" data-ng-click="list.refresh();" data-ng-if="ct.options.refreshBtn">
+					<span class="glyphicon glyphicon-refresh text-success" aria-hidden="true"></span> 
+				</button>
+				<button type="button" class="btn btn-default" title="{{'Add new record'|translate}}" data-ng-click="ct.options.addRecord();" data-ng-if="ct.options.addRecord">
+					<span class="glyphicon glyphicon-plus-sign text-success" aria-hidden="true"></span> <translate>Add</translate>
+				</button>
+				<button type="button" data-ng-attr-class="{{ list.getSelectedCount() && 'btn btn-default' || 'btn btn-default disabled' }}" title="{{'Delete selected records'|translate}}" data-ng-click="ct.options.deleteRows(list.getSelectedRecords());" data-ng-if="ct.options.deleteRows">
+					<span class="glyphicon glyphicon-minus-sign text-danger" aria-hidden="true"></span> <translate>Delete</translate>
+				</button>
+			</div>
+			<!-- Select search field -->
+			<form>
+			<div class="col-lg-3">
+				<div class="input-group">
+					<div class="input-group-btn">
+						<button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="{{'Select a field'|translate}}">
+							<translate>Field</translate> <span class="caret"></span>
+						</button>
+						<ul class="dropdown-menu">
+							<li><a href="" data-ng-click="ct.setSearch(false);">&nbsp;</a></li>
+							<li data-ng-repeat="filter in ct.options.filters"><a href="" data-ng-click="ct.setSearch(filter);">{{filter.title}}</a></li>
+						</ul>
+					</div>
+					<input type="text" class="form-control" placeholder="<- {{'Select a field'|translate}}" aria-label="Search Field" value="{{ct.search_field.title}}" readonly>
+				</div>
+			</div>
+			<!-- Enter search value -->
+			<div class="col-lg-4">
+				<div class="input-group">
+					<input type="text" class="form-control" placeholder="{{'Search for'|translate}}..." data-ng-model="ct.search_value">
+					<span class="input-group-btn">
+						<button class="btn btn-default" type="submit" data-ng-click="ct.search(); $event.preventDefault();" title="{{'Search'|translate}}">
+							<span class="glyphicon glyphicon-search" aria-hidden="true"></span> 
+						</button>
+					</span>
+				</div>
+			</div>
+			</form>
+		</div>
+	</div>
+</div>
+<div class="row" data-ng-if="list.isEmpty()">
+	<div class="col-lg-12">
+		<p><translate>NO DATA FOUND</translate><p>
+	</div>
+</div>
+<!-- Table -->
+<div class="row" data-ng-if="! list.isEmpty()">
+	<div class="col-lg-12">
+		<div class="table-responsive tbl-fixed">
+			<table class="table table-striped table-bordered table-hover table-condensed crud-table">
+				<!-- Table header -->
+				<thead>
+					<tr>
+						<th data-ng-if="list.selectEnabled()">
+							<button type="button" class="btn btn-default btn-xs" data-ng-click="list.toggleSelectAll();" title="{{ct.getCheckedStr()|translate}}">
+								<span class="glyphicon glyphicon-check" aria-hidden="true"></span> 
+							</button>
+						</th>
+						<th data-ng-repeat="col in ct.options.cols" class="{{col.class}}">
+							<span class="tbl-hdr" data-ng-if="ct.colIsSortable(col) == false">{{col.title}}</span>
+							<table style="width:100%" data-ng-if="ct.colIsSortable(col)" class="tbl-hdr">
+								<tr>
+									<td class="col-header">{{col.title}} </td>
+									<td align="right">
+										<button type="button" data-ng-attr-class="{{ list.isSortedAsc(col.field) && 'btn btn-default btn-xs active' || 'btn btn-default btn-xs' }}" data-ng-click="ct.sort($event, col.field, 'asc');" title="{{'Sort asc.'|translate}}">
+											<span class="glyphicon glyphicon-triangle-top" aria-hidden="true"></span> 
+										</button>
+										<button type="button" data-ng-attr-class="{{ list.isSortedDesc(col.field) && 'btn btn-default btn-xs active' || 'btn btn-default btn-xs' }}" data-ng-click="ct.sort($event, col.field, 'desc');" title="{{'Sort desc.'|translate}}">
+											<span class="glyphicon glyphicon-triangle-bottom" aria-hidden="true"></span> 
+										</button>
+									</td>
+								</tr>
+							</table>
+						</th>
+						<th data-ng-if="ct.options.actionsCol"><translate>Actions</translate></th>
+					</tr>
+				</thead>
+				<!-- Table body -->
+				<tbody>
+					<tr data-ng-repeat="rec in list.getRecords()" data-ng-click="list.recordToggleSelect(rec);" data-ng-attr-class="{{ list.isRecordSelected(rec) && 'info' || '' }}">
+						<!-- checkbox -->
+						<td align="center" data-ng-if="list.selectEnabled()"><input type="checkbox" value="{{rec[ct.options.pk]}}" data-ng-model="rec.flSelected" data-ng-click="$event.stopPropagation();list.enforceSelection(rec);" data-ng-if="! rec.readonly"></td>
+						<!-- data -->
+						<td data-ng-repeat="col in ct.options.cols" class="{{col.class}}">
+							<fl-field-display field="{{col.field}}" value="{{rec[col.field]}}"></fl-field-display>
+						</td>
+						<!-- actions -->
+						<td data-ng-if="ct.options.actionsCol">
+							<button class="btn btn-default btn-xs" type="button" data-ng-click="ct.options.editRecord(rec); $event.stopPropagation();" title="{{'Edit record'|translate}}" data-ng-if="ct.options.editRecord && ! rec.readonly">
+								<span class="glyphicon glyphicon-edit" aria-hidden="true"></span> 
+							</button>
+							<button class="btn btn-default btn-xs" type="button" data-ng-click="ct.options.deleteRecord(rec); $event.stopPropagation();" title="{{'Delete record'|translate}}" data-ng-if="ct.options.deleteRecord && ! rec.readonly">
+								<span class="glyphicon glyphicon-trash" aria-hidden="true"></span> 
+							</button>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+<div class="row" data-ng-if="! list.isEmpty()"><div class="col-lg-12"><translate>Selected rows</translate>: {{list.getSelectedCount()}}</div></div>
+<!-- Pagination -->
+<div class="row" data-ng-if="list.paginationEnabled()">
+	<div class="col-lg-5">
+		<!-- Angular UI Bootstrap pagination -->
+		<pagination boundary-links="true" ng-change="ct.pageChanged()" ng-model="ct.page" total-items="ct.totalItems" items-per-page="ct.itemsPerPage" max-size="ct.maxSize" previous-text="&lsaquo;" next-text="&rsaquo;" first-text="&laquo;" last-text="&raquo;"></pagination>
+	</div>
+	<!-- Page size -->
+	<div class="col-lg-3" style="text-align:right;">
+		<div class="input-group" style="margin-top:20px;">
+			<div class="input-group-btn">
+				<button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="{{'Select a value'|translate}}">
+					<translate>Page size</translate> <span class="caret"></span>
+				</button>
+				<ul class="dropdown-menu">
+					<li data-ng-repeat="ps in ct.options.pagesizes"><a href="" data-ng-click="list.setPageSize(ps);">{{ps}}</a></li>
+				</ul>
+			</div>
+			<input type="text" class="form-control" aria-label="Page Size" value="{{ct.itemsPerPage}}" readonly>
+		</div>
+	</div>
+	<!-- Info -->
+	<div class="col-lg-4" style="text-align:right;">
+		<div style="margin-top:20px;">
+			<translate>Showing</translate> {{ct.first}} <translate>to</translate> {{ct.last}} <translate>of</translate> {{ct.totalItems}} <translate>entries</translate>
+		</div>
+	</div>
+</div>
+<!-- Server response -->
+<div data-ng-if="list.options.listURL && ct.options.debug">
+	<p><translate>Server response</translate>:</p>
+	<p><pre style="height:200px;scroll:auto;"><code>{{list.server_response | json: 2}}</code></pre></p>
+</div>
+</treasure-overlay-spinner>

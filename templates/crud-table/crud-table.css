@@ -1,0 +1,28 @@
+.pagination a { cursor: pointer; }
+
+.treasure-overlay-spinner-container {
+	z-index: 9;
+}
+
+.tbl-hdr>thead>tr>td, 
+.tbl-hdr>thead>tr>th,
+.tbl-hdr>tbody>tr>td, 
+.tbl-hdr>tbody>tr>th
+{
+	white-space: nowrap;
+}
+
+@media screen and (max-width: 767px) {
+	.table-responsive>.crud-table>tbody>tr>td 
+	{
+		white-space: normal; 
+	}
+}
+
+.tbl-fixed {
+	min-height:250px
+}
+
+.col-header {
+	padding-right: 10px;
+}

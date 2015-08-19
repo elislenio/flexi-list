@@ -2,8 +2,7 @@
 	
 /**
 * @fileOverview
-* @author Guido Donnari (gdonnari@yahoo.com.ar)
-* @version 0.2
+* @author Guido Donnari - https://github.com/elislenio/flexi-list
 */
 
 /**
@@ -206,9 +205,6 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		pages: 5,
 		method: 'GET',
 		urlencoded: true,
-		onRecordsLoaded: false,
-		onLoadError: false,
-		overlayToggle: false,
 		log: {id: 'FL', err: false, debug: false}
 	};
 	
@@ -233,8 +229,12 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		* @public
 		* @param p_options options.
 		*/
-		$scope.list.loadData = function (p_options) {
+		$scope.list.loadData = function (p_options, offset_reset) {
+			
 			angular.extend(options, p_options);
+			
+			if (offset_reset) offset = 0;
+			
 			loadData();
 		};
 		
@@ -373,9 +373,9 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	}
 	
 	//************************************************************
-	// Row Selection
+	// Record Selection
 	//************************************************************
-	var selectedRow = false;
+	var selectedRecord = false;
 	var selectedCount = 0;
 	var allSelected = false;
 	
@@ -384,28 +384,28 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		/** Returns true whenever the given record is selected
 		* @public
 		*/  
-		$scope.list.isRowSelected = function (record) {
+		$scope.list.isRecordSelected = function (record) {
 			if (! record.flSelected )	return false;
 			return true;
 		};
 		
-		/** Toggles row selection
+		/** Toggles record selection
 		* @public
 		*/  
-		$scope.list.rowToggleSelect = function (record) {
-			if (record.flSelected) rowUnselect(record, false);
-			else rowSelect(record, false);
+		$scope.list.recordToggleSelect = function (record) {
+			if (record.flSelected) recordUnselect(record, false);
+			else recordSelect(record, false);
 		};
 		
-		/** Triggers the validation of row selection after changing record.flSelected model.
+		/** Triggers the validation of record selection after changing record.flSelected model.
 		* @public
 		*/
 		$scope.list.enforceSelection = function (record) {
-			if (record.flSelected) rowSelect(record, true);
-			else rowUnselect(record, true);
+			if (record.flSelected) recordSelect(record, true);
+			else recordUnselect(record, true);
 		};
 		
-		/** Returns the next selection state for all rows
+		/** Returns the next selection state for all record
 		* @public
 		*/  
 		$scope.list.getToggleSelNextState = function () {
@@ -414,7 +414,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		
 		if (options.multiselect)
 		{
-			/** Toggles the selection state for all rows
+			/** Toggles the selection state for all record
 			* @public
 			*/		
 			$scope.list.toggleSelectAll = function () {
@@ -423,21 +423,21 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				
 				// Reverse selected state and apply
 				allSelected = (! allSelected);
-				selectionApplyAll(allSelected);
+				selectionApplyAll(allSelected, true);
 			};
 		}
 		
-		/** Returns the selected rows count
+		/** Returns the selected records count
 		* @public
 		*/  
 		$scope.list.getSelectedCount = function () {
 			return selectedCount;
 		};
 		
-		/** Returns the selected rows array
+		/** Returns the selected records array
 		* @public
 		*/  
-		$scope.list.getSelectedRows = function () {
+		$scope.list.getSelectedRecords = function () {
 			
 			var selection = [];
 			
@@ -451,18 +451,27 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		};
 	};
 	
-	function selectionApplyAll(selected)
+	function selectionApplyAll(selected, current_page)
 	{
-		angular.forEach(client_ds, function (record) 
-		{
-			if (selected)
-				rowSelect(record, false);
-			else
-				rowUnselect(record, false);
-		});
+		if (current_page)
+			angular.forEach(records, function (record) 
+			{
+				if (selected)
+					recordSelect(record, false);
+				else
+					recordUnselect(record, false);
+			});
+		else
+			angular.forEach(client_ds, function (record) 
+			{
+				if (selected)
+					recordSelect(record, false);
+				else
+					recordUnselect(record, false);
+			});
 	};
 	
-	function rowSelect(record, force)
+	function recordSelect(record, force)
 	{
 		if (record.readonly) return;
 		
@@ -476,14 +485,14 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		}
 		else
 		{
-			if (selectedRow) selectedRow.flSelected = false;
+			if (selectedRecord) selectedRecord.flSelected = false;
 			record.flSelected = true;
-			selectedRow = record;
+			selectedRecord = record;
 			selectedCount = 1;
 		}
 	}
 	
-	function rowUnselect(record, force)
+	function recordUnselect(record, force)
 	{
 		if (record.readonly) return;
 		
@@ -497,7 +506,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		}
 		else
 		{
-			selectedRow = false;
+			selectedRecord = false;
 			record.flSelected = false;
 			selectedCount = 0;
 		}
@@ -508,13 +517,16 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	// Pagination
 	//************************************************************
 	var client_ds;
-	
+	var pagination_info = {};
+		
 	function makeScopePagination()
 	{
-		/** Stores the pagination model
+		/** Returns the pagination object
 		* @public
 		*/
-		$scope.list.pagination_info = {};
+		$scope.list.getPagination = function () {
+			return pagination_info;
+		};
 		
 		/** Triggers page change
 		* @public
@@ -535,19 +547,22 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	
 	function getPage(pagenum)
 	{
-		// Unselect rows that are not in the current page
-		if (options.selectable && options.pagination_clear_selection)
-			selectionApplyAll(false);
-		
 		if (pagenum < 1) return;
-		if (pagenum > $scope.list.pagination_info.totalpages) return;
+		if (pagenum > pagination_info.totalpages) return;
+		
+		$scope.$emit('flStartOp', {op: 'getPage'});
+		
+		// Unselect records that are not in the current page
+		if (options.selectable && options.pagination_clear_selection)
+			selectionApplyAll(false, false);
 		
 		offset = (pagenum - 1) * options.pagesize;
 		
 		if ( options.paginationOnClient )
 		{
 			records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-			$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+			pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+			$scope.$emit('flComplete', {result: 'OK'});
 		}
 		else
 		{
@@ -663,7 +678,6 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		{
 			loadedDS = [];
 			if (options.log.err) $log.log(options.log.id + ' - Load Error.');
-			if (options.onLoadError) options.onLoadError(data);
 		}
 				
 		client_ds = flexiListService.processDataset(
@@ -679,7 +693,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		if (options.pagination)
 		{
 			records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-			$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+			pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
 		}
 		else
 		{
@@ -687,8 +701,6 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		}
 		
 		sorted = transformSorted();
-		
-		if (options.onRecordsLoaded) options.onRecordsLoaded(records);
 	}
 	
 	function processDataset()
@@ -706,7 +718,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		if (options.pagination)
 		{
 			records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-			$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+			pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
 		}
 		else
 		{
@@ -724,25 +736,21 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				
 				if (options.log.debug) $log.log(options.log.id + ' - Data: ' + $filter('json')(data));
 				
-				if (! data)
-				{
-					data = [];
-					if (options.log.err) $log.log(options.log.id + ' - Load Error.');
-					if (options.onLoadError) options.onLoadError(data);
-				}
+				if (! data)	data = [];
 				
 				loadedDS = data;
 				processDataset();
 				
 				sorted = transformSorted();
 				
-				if (options.onRecordsLoaded) options.onRecordsLoaded(records);
+				$scope.$emit('flComplete', {result: 'OK'});
 			}, 
 			function(reason) {
 				loadedDS = [];
 				records = [];
 				if (options.log.err) $log.log(options.log.id + ' - Load Error: ' + reason);
-				if (options.onLoadError) options.onLoadError({result: 'ERROR', message: reason});
+				
+				$scope.$emit('flComplete', {result: 'ERROR', message: reason});
 			}
 		);
 	};
@@ -757,11 +765,15 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				$scope.list.server_response = data;
 				if (options.log.debug) $log.log(options.log.id + ' - Data: ' + $filter('json')(data));
 				
-				if (! data || data.result == 'ERROR')
+				if (! data)	
 				{
 					data = {};
-					if (options.log.err) $log.log(options.log.id + ' - Load Error.');
-					if (options.onLoadError) options.onLoadError(data);
+				}
+				else
+				{
+					if (data.result != 'OK')
+						if (options.log.err) 
+							$log.log(options.log.id + ' - data.result: ' + data.result);
 				}
 				
 				if (! data.records) data.records = [];
@@ -771,63 +783,65 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				if (data.orderby) setOrderby(data.orderby);
 				
 				ds_length = data.rowcount;
+				client_ds = data.records;
 				
 				if (options.pagination)
 				{
 					if ( options.paginationOnClient )
 					{
-						client_ds = data.records;
 						records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-						$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+						pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
 					}
 					else
 					{
-						client_ds = [];
 						records = data.records;
-						$scope.list.pagination_info = flexiListService.getPagination(ds_length, data.offset, options.pagesize, options.pages);
+						pagination_info = flexiListService.getPagination(ds_length, data.offset, options.pagesize, options.pages);
 					}
 				}
 				else
 				{
-					client_ds = [];
 					records = data.records;
 				}
 				
-				if (options.onRecordsLoaded) options.onRecordsLoaded(records);
+				if (data.result != 'OK')
+					$scope.$emit('flComplete', {result: 'ERROR', message: data.result});
+				else
+					$scope.$emit('flComplete', {result: 'OK'});
 			}, 
 			function(reason) {
 				loadedDS = [];
 				records = [];
 				if (options.log.err) $log.log(options.log.id + ' - Load Error: ' + reason);
-				if (options.onLoadError) options.onLoadError({result: 'ERROR', message: reason});
+				$scope.$emit('flComplete', {result: 'ERROR', message: reason});
 			}
 		);
 	};
 	
 	function change(p_options)
 	{
+		$scope.$emit('flStartOp', {op: 'change'});
 		angular.extend(options, p_options);
-		if (options.overlayToggle)	options.overlayToggle();
 		
-		// Unselect all rows
-		if (options.selectable) selectionApplyAll(false);
+		// Unselect all records
+		if (options.selectable) selectionApplyAll(false, false);
 		// Reset to first page
 		offset = 0;
 		
 		processDataset();
 		sorted = transformSorted();
-		if (options.overlayToggle)	options.overlayToggle();
+		$scope.$emit('flComplete', {result: 'OK'});
 	};
 	
 	function loadData()
 	{
-		if (options.overlayToggle)	options.overlayToggle();
+		$scope.$emit('flStartOp', {op: 'loadData'});
 		
 		selectedCount = 0;
 		
 		if (options.data)
 		{
 			loadInlineData();
+			$scope.$emit('flComplete', {result: 'OK'});
 		}
 		else if (options.jsonFile)
 		{
@@ -839,10 +853,10 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		}
 		else
 		{
-			if (options.log.err) $log.log(options.log.id + ' - undefined data source.');
+			if (options.log.err) $log.log(options.log.id + ' - Undefined data source.');
+			$scope.$emit('flComplete', {result: 'ERROR', message: 'Undefined data source'});
 		}
 		
-		if (options.overlayToggle)	options.overlayToggle();
 	};
 }]);
 
@@ -868,24 +882,6 @@ flexiList.directive('flMain', function() {
 		restrict: 'E',
 		scope: {list: '='},
 		controller: 'flMainCtrl'
-	};
-});
-
-/**
- * @ngdoc directive
- * @name flFieldDisplay
- * @description 
- * Directive for custom display of record data.
- */
-flexiList.directive('flFieldDisplay', function() {
-	return {
-		restrict: 'E',
-		link: function link(scope, element, attrs) {
-			if (scope.list.displayField)
-				scope.list.displayField(scope, element, attrs);
-			else
-				element.html(attrs['value']);
-		}
 	};
 });
 
