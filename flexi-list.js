@@ -22,7 +22,7 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 	
 	return {
 		
-		sortDataset: function(dataset, orderby)
+		sortDataset: function(dataset, orderby, log)
 		{
 			var sorted_ds = [];
 			
@@ -96,7 +96,7 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 			return filtered_ds;
 		},
 		
-		limitDataset: function(dataset, limit)
+		limitDataset: function(dataset, limit, log)
 		{
 			if (! limit) return dataset;
 			
@@ -114,8 +114,8 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 		processDataset: function(dataset, where, orderby, limit, log)
 		{
 			var filtered_ds = this.filterDataset(dataset, where, log);
-			var ordered_ds = this.sortDataset(filtered_ds, orderby);
-			var limited_ds = this.limitDataset(ordered_ds, limit);
+			var ordered_ds = this.sortDataset(filtered_ds, orderby, log);
+			var limited_ds = this.limitDataset(ordered_ds, limit, log);
 			return limited_ds;
 		},
 		
@@ -195,8 +195,11 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		selectable: true,
 		multiselect: true,
 		limit: false,
+		searchable: true,
+		searchOnClient: false,
 		where: [],
 		sortable: true,
+		sortOnClient: false,
 		orderby: [],
 		pagination: true,
 		paginationOnClient: false,
@@ -286,6 +289,13 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			return options.sortable;
 		};
 		
+		/** Returns the search enabled status
+		* @public
+		*/  
+		$scope.list.searchEnabled = function () {
+			return options.searchable;
+		};
+		
 		/** Returns the records array
 		* @public
 		*/  
@@ -338,6 +348,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		sorted = transformSorted();
 	}
 	
+	/*
 	function addOrderby(orderby)
 	{
 		var replaced = false;
@@ -360,6 +371,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		
 		sorted = transformSorted();
 	}
+	*/
 	
 	function transformSorted()
 	{
@@ -578,9 +590,14 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		var deferred = $q.defer();
 		
 		var post_data = {};
-		post_data.where = options.where;
-		post_data.orderby = options.orderby;
+		
 		if (options.limit) post_data.limit = options.limit;
+		
+		if (options.searchable && ! options.searchOnClient)
+			post_data.where = options.where;
+		
+		if (options.sortable && ! options.sortOnClient)
+			post_data.orderby = options.orderby;
 		
 		if (options.pagination && ! options.paginationOnClient)
 		{
@@ -672,6 +689,9 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	function loadInlineData()
 	{
 		options.paginationOnClient = true;
+		options.sortOnClient = true;
+		options.searchOnClient = true;
+		
 		loadedDS = options.data;
 		
 		if (! loadedDS)
@@ -729,6 +749,9 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	function loadJsonFile()
 	{
 		options.paginationOnClient = true;
+		options.sortOnClient = true;
+		options.searchOnClient = true;
+		
 		var promise = requestJsonFile();
 		
 		promise.then(
@@ -780,10 +803,28 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				
 				loadedDS = data.records;
 				
-				if (data.orderby) setOrderby(data.orderby);
+				// Follow the server response if a where clause is informed
+				if (data.where) options.where = data.where;
+					
+				// Follow the server response if an orderby clause is informed
+				if (data.orderby) 
+					setOrderby(data.orderby);
+				else
+					sorted = transformSorted();
 				
-				ds_length = data.rowcount;
+				// Follow the server response if a rowcount is informed (it should be informed)
+				if (data.rowcount)
+					ds_length = data.rowcount;
+				else
+					ds_length = data.records.length;
+				
 				client_ds = data.records;
+				
+				if ( options.searchable && options.searchOnClient )
+					client_ds = flexiListService.filterDataset(client_ds, options.where, options.log);
+				
+				if ( options.sortable && options.sortOnClient )
+					client_ds = flexiListService.sortDataset(client_ds, options.orderby, options.log);
 				
 				if (options.pagination)
 				{
@@ -795,12 +836,21 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 					else
 					{
 						records = data.records;
-						pagination_info = flexiListService.getPagination(ds_length, data.offset, options.pagesize, options.pages);
+						
+						// Follow the server response if an offset or pagesize is informed
+						var v_offset;
+						
+						if (data.offset) v_offset = data.offset;
+						else v_offset = offset;
+						
+						if (data.pagesize) options.pagesize = data.pagesize;
+						
+						pagination_info = flexiListService.getPagination(ds_length, v_offset, options.pagesize, options.pages);
 					}
 				}
 				else
 				{
-					records = data.records;
+					records = client_ds;
 				}
 				
 				if (data.result != 'OK')
