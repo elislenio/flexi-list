@@ -1,0 +1,18 @@
+.pagination a { cursor: pointer; }
+
+.thumb {
+  margin-top: 20px;
+  height: 100px;
+  width: 100px;
+}
+
+.th_container {
+	margin: 20px;
+	width: 220px;
+	height: 270px;
+	float: left;
+}
+
+.hidden {
+	display: none
+}

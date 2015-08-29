@@ -29,7 +29,7 @@
 							<li data-ng-repeat="filter in ct.options.filters"><a href="" data-ng-click="ct.setSearch(filter);">{{filter.title}}</a></li>
 						</ul>
 					</div>
-					<input type="text" class="form-control" placeholder="<- {{'Select a field'|translate}}" aria-label="Search Field" value="{{ct.search_field.title}}" readonly>
+					<input type="text" class="form-control" placeholder="<- {{'Select a field'|translate}}" aria-label="Search Field" data-ng-model="ct.search_field.title" readonly>
 				</div>
 			</div>
 			<!-- Enter search value -->
@@ -86,7 +86,7 @@
 				</thead>
 				<!-- Table body -->
 				<tbody>
-					<tr data-ng-repeat="rec in list.getRecords()" data-ng-click="list.recordToggleSelect(rec);" data-ng-attr-class="{{ list.isRecordSelected(rec) && 'info' || '' }}">
+					<tr data-ng-repeat="rec in list.records" data-ng-click="list.recordToggleSelect(rec);" ng-class="{info: rec.flSelected}">
 						<!-- checkbox -->
 						<td align="center" data-ng-if="list.selectEnabled()"><input type="checkbox" value="{{rec[ct.options.pk]}}" data-ng-model="rec.flSelected" data-ng-click="$event.stopPropagation();list.enforceSelection(rec);" data-ng-if="! rec.readonly"></td>
 						<!-- data -->
@@ -113,7 +113,7 @@
 <div class="row" data-ng-if="list.paginationEnabled()">
 	<div class="col-lg-5">
 		<!-- Angular UI Bootstrap pagination -->
-		<pagination boundary-links="true" ng-change="ct.pageChanged()" ng-model="ct.page" total-items="ct.totalItems" items-per-page="ct.itemsPerPage" max-size="ct.maxSize" previous-text="&lsaquo;" next-text="&rsaquo;" first-text="&laquo;" last-text="&raquo;"></pagination>
+		<pagination boundary-links="true" ng-change="ct.pageChanged()" ng-model="list.pagination_info.currpage" total-items="list.pagination_info.rowcount" items-per-page="list.pagination_info.pagesize" max-size="list.pagination_info.show_pages" previous-text="&lsaquo;" next-text="&rsaquo;" first-text="&laquo;" last-text="&raquo;"></pagination>
 	</div>
 	<!-- Page size -->
 	<div class="col-lg-3" style="text-align:right;">
@@ -126,13 +126,13 @@
 					<li data-ng-repeat="ps in ct.options.pagesizes"><a href="" data-ng-click="list.setPageSize(ps);">{{ps}}</a></li>
 				</ul>
 			</div>
-			<input type="text" class="form-control" aria-label="Page Size" value="{{ct.itemsPerPage}}" readonly>
+			<input type="text" class="form-control" aria-label="Page Size" value="{{list.pagination_info.pagesize}}" readonly>
 		</div>
 	</div>
 	<!-- Info -->
 	<div class="col-lg-4" style="text-align:right;">
 		<div style="margin-top:20px;">
-			<translate>Showing</translate> {{ct.first}} <translate>to</translate> {{ct.last}} <translate>of</translate> {{ct.totalItems}} <translate>entries</translate>
+			<translate>Showing</translate> {{list.pagination_info.firstrec}} <translate>to</translate> {{list.pagination_info.lastrec}} <translate>of</translate> {{list.pagination_info.rowcount}} <translate>entries</translate>
 		</div>
 	</div>
 </div>

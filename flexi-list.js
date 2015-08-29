@@ -16,12 +16,116 @@ var flexiList = angular.module('flexiList', []);
  * @name flexiListService
  * @private
  * @description 
- *   Provides functions to sort, filter and limit a JSON dataset.
+ *   Provides functions to:
+ *		- Load data from server.
+ *  	- Load data from a JSON file.
+ *		- Sort, filter, limit and page the dataset.
  */
-flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter) {
+flexiList.factory('flexiListService', ['$q', '$http', '$log', '$filter', function($q, $http, $log, $filter) {
 	
 	return {
 		
+	requestJsonFile: function(jsonFile)
+	{
+		var deferred = $q.defer();
+		
+		$http({
+			method: 'GET',
+			url: jsonFile
+		}).success(function(data, status) {
+			deferred.resolve(data);
+		}).error(function(data, status){
+			deferred.reject('ERROR: ' + status);
+		});
+		
+		return deferred.promise;
+	},
+	
+	requestServer: function(options, offset)
+		{
+			var deferred = $q.defer();
+			
+			var post_data = {};
+			
+			if (options.limit) post_data.limit = options.limit;
+			
+			if (options.searchable && ! options.searchOnClient)
+				post_data.where = options.where;
+			
+			if (options.sortable && ! options.sortOnClient)
+				post_data.orderby = options.orderby;
+			
+			if (options.pagination && ! options.paginationOnClient)
+			{
+				post_data.offset = offset;
+				post_data.pagesize = options.pagesize;
+			}
+			
+			if (options.urlencoded)
+			{
+				if (options.method == 'GET')
+				{	
+					var v_url = options.listURL + '?' + jQuery.param(post_data);
+					if (options.log.debug) $log.log(options.log.id + ' URL: ' + v_url);
+				
+					$http({
+						method: 'GET',
+						url: v_url
+						/*
+						//Does not work as expected
+						params: post_data,
+						paramSerializer: '$httpParamSerializerJQLike'
+						*/
+					}).success(function(data, status) {
+						deferred.resolve(data);
+					}).error(function(data, status){
+						deferred.reject('ERROR: ' + status);
+					});
+				
+				}
+				else
+				{
+					$http({
+						method: 'POST',
+						url: options.listURL,
+						data: jQuery.param(post_data),
+						headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+						/*
+						//Does not work as expected
+						params: post_data,
+						paramSerializer: '$httpParamSerializerJQLike'
+						*/
+					}).success(function(data, status) {
+						deferred.resolve(data);
+					}).error(function(data, status){
+						deferred.reject('ERROR: ' + status);
+					});
+				}
+			}
+			else
+			{
+				if (options.method == 'GET')
+					$http({
+						method: 'GET',
+						url: options.listURL,
+						params: post_data
+					}).success(function(data, status) {
+						deferred.resolve(data);
+					}).error(function(data, status){
+						deferred.reject('ERROR: ' + status);
+					});
+				else
+					$http.post(options.listURL, post_data)
+					.success(function(data, status) {
+						deferred.resolve(data);
+					}).error(function(data, status){
+						deferred.reject('ERROR: ' + status);
+					});
+			}
+			
+			return deferred.promise;
+		},
+	
 		sortDataset: function(dataset, orderby, log)
 		{
 			var sorted_ds = [];
@@ -49,7 +153,7 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 			var value;
 			var condition;
 			var pattern;
-			var option;
+			var options;
 			var passed;
 			
 			// Where
@@ -65,7 +169,7 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 						value = dataset[i][field];
 						condition = where[j].condition;
 						pattern = where[j].value;
-						option = where[j].option;
+						options = where[j].options;
 						
 						
 						if (! field)	continue;
@@ -74,7 +178,7 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 						//if (! value)	continue;
 						
 						try {
-							passed = $filter(condition)(value, pattern, option);
+							passed = $filter(condition)(value, pattern, options);
 						} catch (e){
 							if (log.err) $log.log(log.id + ' - flexiListService: filter exception at ', e);
 							passed = true;
@@ -96,30 +200,15 @@ flexiList.factory('flexiListService', ['$log', '$filter', function($log, $filter
 			return filtered_ds;
 		},
 		
-		limitDataset: function(dataset, limit, log)
-		{
-			if (! limit) return dataset;
-			
-			var limited_ds = [];
-			var lastrec = limit;
-			
-			if (lastrec > dataset.length)	lastrec = dataset.length;
-			
-			for (var i=0; i < lastrec; i++)
-				limited_ds.push(dataset[i]);
-			
-			return limited_ds;
-		},
-		
 		processDataset: function(dataset, where, orderby, limit, log)
 		{
 			var filtered_ds = this.filterDataset(dataset, where, log);
 			var ordered_ds = this.sortDataset(filtered_ds, orderby, log);
-			var limited_ds = this.limitDataset(ordered_ds, limit, log);
+			var limited_ds = $filter('limitTo')(ordered_ds, limit);
 			return limited_ds;
 		},
 		
-		pageDataset: function(dataset, offset, pagesize)
+		pageDataset: function(dataset, offset, pagesize, log)
 		{
 			var page_ds = [];
 			var lastrec = offset + pagesize;
@@ -211,10 +300,19 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		log: {id: 'FL', err: false, debug: false}
 	};
 	
-	var loadedDS = false;
+	// Dataset as loaded from source
+	$scope.list.loadedDS = false;
+	
+	// Dataset after filter, sort and limit operations
+	$scope.list.client_ds;
 	var ds_length;
-	var records = [];
+	
+	// Dataset after pagination (records displayed)
+	$scope.list.records = [];
 	var offset = 0;
+	
+	// Pagination information
+	$scope.list.pagination_info = {};
 	
 	init();
 	
@@ -277,7 +375,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			
 			if (! options.pagination)	return false;
 			
-			if (records.length > 0) return true;
+			if ($scope.list.records.length > 0) return true;
 			
 			return false;
 		};
@@ -296,18 +394,11 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			return options.searchable;
 		};
 		
-		/** Returns the records array
-		* @public
-		*/  
-		$scope.list.getRecords = function () {
-			return records;
-		};
-		
 		/** Returns true whenever the result set has no records
 		* @public
 		*/  
 		$scope.list.isEmpty = function () {
-			return (records.length == 0 && loadedDS);
+			return ($scope.list.records.length == 0 && $scope.list.loadedDS);
 		};
 		
 		if (options.sortable) makeScopeSortable();
@@ -315,6 +406,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		if (options.selectable) makeScopeSelectable();
 		if (options.autoload) loadData();
 	};
+	
 	
 	//************************************************************
 	// Sortable
@@ -431,7 +523,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			*/		
 			$scope.list.toggleSelectAll = function () {
 			
-				if (! records)	return;
+				if (! $scope.list.records)	return;
 				
 				// Reverse selected state and apply
 				allSelected = (! allSelected);
@@ -453,8 +545,8 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			
 			var selection = [];
 			
-			if (records)
-				angular.forEach(records, function (record) {
+			if ($scope.list.records)
+				angular.forEach($scope.list.records, function (record) {
 					if (record.flSelected)
 						selection.push(record);
 				});
@@ -466,7 +558,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	function selectionApplyAll(selected, current_page)
 	{
 		if (current_page)
-			angular.forEach(records, function (record) 
+			angular.forEach($scope.list.records, function (record) 
 			{
 				if (selected)
 					recordSelect(record, false);
@@ -474,13 +566,15 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 					recordUnselect(record, false);
 			});
 		else
-			angular.forEach(client_ds, function (record) 
+			angular.forEach($scope.list.client_ds, function (record) 
 			{
 				if (selected)
 					recordSelect(record, false);
 				else
 					recordUnselect(record, false);
 			});
+			
+		allSelected = selected;
 	};
 	
 	function recordSelect(record, force)
@@ -528,18 +622,9 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	//************************************************************
 	// Pagination
 	//************************************************************
-	var client_ds;
-	var pagination_info = {};
 		
 	function makeScopePagination()
 	{
-		/** Returns the pagination object
-		* @public
-		*/
-		$scope.list.getPagination = function () {
-			return pagination_info;
-		};
-		
 		/** Triggers page change
 		* @public
 		* @param pagenum number of requested page.
@@ -560,7 +645,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	function getPage(pagenum)
 	{
 		if (pagenum < 1) return;
-		if (pagenum > pagination_info.totalpages) return;
+		if (pagenum > $scope.list.pagination_info.totalpages) return;
 		
 		$scope.$emit('flStartOp', {op: 'getPage'});
 		
@@ -572,8 +657,8 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		
 		if ( options.paginationOnClient )
 		{
-			records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-			pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+			$scope.list.records = flexiListService.pageDataset($scope.list.client_ds, offset, options.pagesize, options.log);
+			$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
 			$scope.$emit('flComplete', {result: 'OK'});
 		}
 		else
@@ -585,106 +670,6 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	//************************************************************
 	// Data load
 	//************************************************************
-	function requestDB()
-	{
-		var deferred = $q.defer();
-		
-		var post_data = {};
-		
-		if (options.limit) post_data.limit = options.limit;
-		
-		if (options.searchable && ! options.searchOnClient)
-			post_data.where = options.where;
-		
-		if (options.sortable && ! options.sortOnClient)
-			post_data.orderby = options.orderby;
-		
-		if (options.pagination && ! options.paginationOnClient)
-		{
-			post_data.offset = offset;
-			post_data.pagesize = options.pagesize;
-		}
-		
-		if (options.urlencoded)
-		{
-			if (options.method == 'GET')
-			{	
-				var v_url = options.listURL + '?' + jQuery.param(post_data);
-				if (options.log.debug) $log.log(options.log.id + ' URL: ' + v_url);
-			
-				$http({
-					method: 'GET',
-					url: v_url
-					/*
-					//Does not work as expected
-					params: post_data,
-					paramSerializer: '$httpParamSerializerJQLike'
-					*/
-				}).success(function(data, status) {
-					deferred.resolve(data);
-				}).error(function(data, status){
-					deferred.reject('ERROR: ' + status);
-				});
-			
-			}
-			else
-			{
-				$http({
-					method: 'POST',
-					url: options.listURL,
-					data: jQuery.param(post_data),
-					headers: {'Content-Type': 'application/x-www-form-urlencoded'}
-					/*
-					//Does not work as expected
-					params: post_data,
-					paramSerializer: '$httpParamSerializerJQLike'
-					*/
-				}).success(function(data, status) {
-					deferred.resolve(data);
-				}).error(function(data, status){
-					deferred.reject('ERROR: ' + status);
-				});
-			}
-		}
-		else
-		{
-			if (options.method == 'GET')
-				$http({
-					method: 'GET',
-					url: options.listURL,
-					params: post_data
-				}).success(function(data, status) {
-					deferred.resolve(data);
-				}).error(function(data, status){
-					deferred.reject('ERROR: ' + status);
-				});
-			else
-				$http.post(options.listURL, post_data)
-				.success(function(data, status) {
-					deferred.resolve(data);
-				}).error(function(data, status){
-					deferred.reject('ERROR: ' + status);
-				});
-		}
-		
-		return deferred.promise;
-	}
-	
-	function requestJsonFile()
-	{
-		var deferred = $q.defer();
-		
-		$http({
-			method: 'GET',
-			url: options.jsonFile
-		}).success(function(data, status) {
-			deferred.resolve(data);
-		}).error(function(data, status){
-			deferred.reject('ERROR: ' + status);
-		});
-		
-		return deferred.promise;
-	}
 	
 	function loadInlineData()
 	{
@@ -692,15 +677,15 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		options.sortOnClient = true;
 		options.searchOnClient = true;
 		
-		loadedDS = options.data;
+		$scope.list.loadedDS = options.data;
 		
-		if (! loadedDS)
+		if (! $scope.list.loadedDS)
 		{
-			loadedDS = [];
+			$scope.list.loadedDS = [];
 			if (options.log.err) $log.log(options.log.id + ' - Load Error.');
 		}
 				
-		client_ds = flexiListService.processDataset(
+		$scope.list.client_ds = flexiListService.processDataset(
 			options.data, 
 			options.where,
 			options.orderby,
@@ -708,16 +693,16 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 			options.log
 		);
 		
-		ds_length = client_ds.length;
+		ds_length = $scope.list.client_ds.length;
 		
 		if (options.pagination)
 		{
-			records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-			pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+			$scope.list.records = flexiListService.pageDataset($scope.list.client_ds, offset, options.pagesize, options.log);
+			$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
 		}
 		else
 		{
-			records = client_ds;
+			$scope.list.records = $scope.list.client_ds;
 		}
 		
 		sorted = transformSorted();
@@ -725,24 +710,24 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 	
 	function processDataset()
 	{
-		client_ds = flexiListService.processDataset(
-			loadedDS, 
+		$scope.list.client_ds = flexiListService.processDataset(
+			$scope.list.loadedDS, 
 			options.where,
 			options.orderby,
 			options.limit,
 			options.log
 		);
 		
-		ds_length = client_ds.length;
+		ds_length = $scope.list.client_ds.length;
 		
 		if (options.pagination)
 		{
-			records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-			pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+			$scope.list.records = flexiListService.pageDataset($scope.list.client_ds, offset, options.pagesize, options.log);
+			$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
 		}
 		else
 		{
-			records = client_ds;
+			$scope.list.records = $scope.list.client_ds;
 		}
 	}
 	
@@ -752,7 +737,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		options.sortOnClient = true;
 		options.searchOnClient = true;
 		
-		var promise = requestJsonFile();
+		var promise = flexiListService.requestJsonFile(options.jsonFile);
 		
 		promise.then(
 			function(data){
@@ -761,26 +746,24 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				
 				if (! data)	data = [];
 				
-				loadedDS = data;
+				$scope.list.loadedDS = data;
 				processDataset();
-				
 				sorted = transformSorted();
 				
 				$scope.$emit('flComplete', {result: 'OK'});
 			}, 
 			function(reason) {
-				loadedDS = [];
-				records = [];
 				if (options.log.err) $log.log(options.log.id + ' - Load Error: ' + reason);
-				
+				$scope.list.loadedDS = [];
+				$scope.list.records = [];
 				$scope.$emit('flComplete', {result: 'ERROR', message: reason});
 			}
 		);
 	};
 	
-	function loadFromDb()
+	function loadFromServer()
 	{
-		var ajax = requestDB();
+		var ajax = flexiListService.requestServer(options, offset);
 		
 		ajax.then(
 			function(data){
@@ -801,7 +784,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				
 				if (! data.records) data.records = [];
 				
-				loadedDS = data.records;
+				$scope.list.loadedDS = data.records;
 				
 				// Follow the server response if a where clause is informed
 				if (data.where) options.where = data.where;
@@ -818,24 +801,27 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 				else
 					ds_length = data.records.length;
 				
-				client_ds = data.records;
+				$scope.list.client_ds = data.records;
 				
 				if ( options.searchable && options.searchOnClient )
-					client_ds = flexiListService.filterDataset(client_ds, options.where, options.log);
+				{
+					$scope.list.client_ds = flexiListService.filterDataset($scope.list.client_ds, options.where, options.log);
+					ds_length = $scope.list.client_ds.length;
+				}
 				
 				if ( options.sortable && options.sortOnClient )
-					client_ds = flexiListService.sortDataset(client_ds, options.orderby, options.log);
+					$scope.list.client_ds = flexiListService.sortDataset($scope.list.client_ds, options.orderby, options.log);
 				
 				if (options.pagination)
 				{
 					if ( options.paginationOnClient )
 					{
-						records = flexiListService.pageDataset(client_ds, offset, options.pagesize);
-						pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
+						$scope.list.records = flexiListService.pageDataset($scope.list.client_ds, offset, options.pagesize, options.log);
+						$scope.list.pagination_info = flexiListService.getPagination(ds_length, offset, options.pagesize, options.pages);
 					}
 					else
 					{
-						records = data.records;
+						$scope.list.records = data.records;
 						
 						// Follow the server response if an offset or pagesize is informed
 						var v_offset;
@@ -845,12 +831,12 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 						
 						if (data.pagesize) options.pagesize = data.pagesize;
 						
-						pagination_info = flexiListService.getPagination(ds_length, v_offset, options.pagesize, options.pages);
+						$scope.list.pagination_info = flexiListService.getPagination(ds_length, v_offset, options.pagesize, options.pages);
 					}
 				}
 				else
 				{
-					records = client_ds;
+					$scope.list.records = $scope.list.client_ds;
 				}
 				
 				if (data.result != 'OK')
@@ -859,9 +845,9 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 					$scope.$emit('flComplete', {result: 'OK'});
 			}, 
 			function(reason) {
-				loadedDS = [];
-				records = [];
 				if (options.log.err) $log.log(options.log.id + ' - Load Error: ' + reason);
+				$scope.list.loadedDS = [];
+				$scope.list.records = [];
 				$scope.$emit('flComplete', {result: 'ERROR', message: reason});
 			}
 		);
@@ -899,7 +885,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 		}
 		else if (options.listURL)
 		{
-			loadFromDb();
+			loadFromServer();
 		}
 		else
 		{
@@ -917,7 +903,7 @@ function($scope, $log, $q, $http, $filter, flexiListService) {
 
 /* 
 *******************************************************************************
-** Directives
+** Directive
 *******************************************************************************
 */
 
@@ -952,9 +938,9 @@ flexiList.directive('flMain', function() {
  * Evaluates the "Equal" condition.
  */
 flexiList.filter('eq', function() {
-	return function(value, pattern, insensitive) {
+	return function(value, pattern, options) {
 		if (value == undefined || pattern == undefined) return true;
-		if (insensitive)
+		if (options.insensitive)
 			return (value.toLowerCase() == pattern.toLowerCase());
 		else
 			return (value == pattern);
@@ -1033,9 +1019,9 @@ flexiList.filter('le', function() {
  * Evaluates the "LIKE" condition with a wildcard on the left. Eg. %PATTERN
  */
 flexiList.filter('like_l', function() {
-	return function(value, pattern, insensitive) {
+	return function(value, pattern, options) {
 		if (value == undefined || pattern == undefined) return true;
-		if (insensitive)
+		if (options.insensitive)
 			return (value.toLowerCase().indexOf(pattern.toLowerCase(), value.length - pattern.length) !== -1);
 		else
 			return (value.indexOf(pattern, value.length - pattern.length) !== -1);
@@ -1049,9 +1035,9 @@ flexiList.filter('like_l', function() {
  * Evaluates the "LIKE" condition with a wildcard on the right. Eg. PATTERN%
  */
 flexiList.filter('like_r', function() {
-	return function(value, pattern, insensitive) {
+	return function(value, pattern, options) {
 		if (value == undefined || pattern == undefined) return true;
-		if (insensitive)
+		if (options.insensitive)
 			return (value.toLowerCase().indexOf(pattern.toLowerCase()) === 0);
 		else
 			return (value.indexOf(pattern) === 0);
@@ -1065,9 +1051,9 @@ flexiList.filter('like_r', function() {
  * Evaluates the "LIKE" condition with left and right wildcards. Eg. %PATTERN%
  */
 flexiList.filter('like_b', function() {
-	return function(value, pattern, insensitive) {
+	return function(value, pattern, options) {
 		if (value == undefined || pattern == undefined) return true;
-		if (insensitive)
+		if (options.insensitive)
 			return (value.toLowerCase().indexOf(pattern.toLowerCase()) !== -1);
 		else
 			return (value.indexOf(pattern) !== -1);
@@ -1107,15 +1093,9 @@ flexiList.filter('is_not_null', function() {
  * Evaluates the a condition based on a regular expression
  */
 flexiList.filter('regexp', function() {
-	return function(value, pattern, modifier) {
+	return function(value, pattern, options) {
 		if (value == undefined || pattern == undefined) return true;
-		var regex = new RegExp(pattern, modifier);
+		var regex = new RegExp(pattern, options.modifier);
 		return regex.test(value);
 	};
 });
-
-/*
-// TODO: support for nested sorts at client side
-if (p_options.orderby_append)
-	addOrderby(p_options.orderby);
-*/

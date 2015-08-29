@@ -2,7 +2,7 @@
 	
 /**
 * @fileOverview
-* @author Guido Donnari (gdonnari@yahoo.com.ar)
+* @author Guido Donnari
 */
 
 /**
@@ -21,10 +21,6 @@ crudTable.controller('crudTableCtrl', ['$scope', 'gettext', function($scope, get
 	$scope.ct.busy = false;
 	$scope.ct.page = 1;
 	
-	$scope.ct.getOption = function (option) {
-		return options[option];
-	};
-	
 	$scope.$on('flStartOp', function($e, $args)
 	{
 		$scope.ct.busy = true;
@@ -32,25 +28,12 @@ crudTable.controller('crudTableCtrl', ['$scope', 'gettext', function($scope, get
 	
 	$scope.$on('flComplete', function($e, $args)
 	{
-		if ($scope.list.paginationEnabled())
-		{
-			var pagination = $scope.list.getPagination();
-			
-			if (pagination)
-			{
-				$scope.ct.first = pagination.firstrec;
-				$scope.ct.last = pagination.lastrec;
-				$scope.ct.totalItems = pagination.rowcount;
-				$scope.ct.itemsPerPage = pagination.pagesize;
-				$scope.ct.maxSize = pagination.show_pages;
-				
-				if ($scope.ct.page != pagination.currpage)
-					$scope.ct.page = pagination.currpage;
-			}
-		}
-		
 		$scope.ct.busy = false;
 	});
+	
+	$scope.ct.pageChanged = function() {
+		$scope.list.changePage($scope.list.pagination_info.currpage);
+	};
 	
 	$scope.ct.setSearch = function (field) {
 		$scope.ct.search_field = field;
@@ -104,10 +87,6 @@ crudTable.controller('crudTableCtrl', ['$scope', 'gettext', function($scope, get
 	$scope.ct.getCheckedStr = function() {
 		if ($scope.list.getToggleSelNextState())	return gettext('Uncheck all rows');
 		return gettext('Check all rows');
-	};
-	
-	$scope.ct.pageChanged = function() {
-		$scope.list.changePage($scope.ct.page);
 	};
 	
 }])

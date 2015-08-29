@@ -1,0 +1,58 @@
+<fl-main list="list"></fl-main>
+<div class="row">
+    <div class="col-md-12">
+		<form> 
+			<div class="input-group"> 
+			  <input type="text" class="form-control" placeholder="Search for..." data-ng-model="th.search_value"> 
+			  <span class="input-group-btn"> 
+				<button class="btn btn-default" type="submit" data-ng-click="th.search(); $event.preventDefault();" >Go!</button> 
+			  </span> 
+			</div>
+		</form>
+    </div>
+</div>
+<div class="row" data-ng-if="list.isEmpty()">
+	<div class="col-md-12">
+		<p>NO DATA FOUND<p>
+	</div>
+</div>
+<!-- Records -->
+<div class="row" data-ng-if="! list.isEmpty()">
+    <div class="col-md-12">
+		<div data-ng-repeat="rec in list.records track by $index" class="thumbnail th_container">
+			<img class="thumb" alt="{{rec[th.options.img_alt_field]}}" data-ng-src="{{th.getThumbnailSrc(rec)}}">
+			<div class="caption">
+				<h4 style="text-align:center;">{{rec[th.options.th_label]}}</h4>
+				<p style="text-align:left"><a onclick="event.stopPropagation();alert('interested on this phone?');" href="javascript:void(0);">{{rec[th.options.th_snippet] | limitTo : 100}}...</a></p>
+			</div>
+		</div>
+    </div>
+</div>
+<div class="row" data-ng-if="! list.isEmpty()"><div class="col-lg-12">Selected rows: {{list.getSelectedCount()}}</div></div>
+<!-- Pagination -->
+<div class="row" data-ng-if="list.paginationEnabled()">
+	<div class="col-lg-5">
+		<!-- Angular UI Bootstrap pagination -->
+		<pagination boundary-links="true" ng-change="th.pageChanged()" ng-model="list.pagination_info.currpage" total-items="list.pagination_info.rowcount" items-per-page="list.pagination_info.pagesize" max-size="list.pagination_info.show_pages" previous-text="&lsaquo;" next-text="&rsaquo;" first-text="&laquo;" last-text="&raquo;"></pagination>
+	</div>
+	<!-- Page size -->
+	<div class="col-lg-3" style="text-align:right;">
+		<div class="input-group" style="margin-top:20px;">
+			<div class="input-group-btn">
+				<button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="{{'Select a value'}}">
+					Page size <span class="caret"></span>
+				</button>
+				<ul class="dropdown-menu">
+					<li data-ng-repeat="ps in th.options.pagesizes"><a href="" data-ng-click="list.setPageSize(ps);">{{ps}}</a></li>
+				</ul>
+			</div>
+			<input type="text" class="form-control" aria-label="Page Size" value="{{list.pagination_info.pagesize}}" readonly>
+		</div>
+	</div>
+	<!-- Info -->
+	<div class="col-lg-4" style="text-align:right;">
+		<div style="margin-top:20px;">
+			Showing {{list.pagination_info.firstrec}} to {{list.pagination_info.lastrec}} of {{list.pagination_info.rowcount}} entries
+		</div>
+	</div>
+</div>
