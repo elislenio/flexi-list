@@ -36,7 +36,7 @@ thumbs.controller('thumbsCtrl', ['$scope', function($scope) {
 				field: $scope.th.options.search_field, 
 				condition: $scope.th.options.search_condition, 
 				value: $scope.th.search_value,
-				option: $scope.th.options.search_condition_opt
+				options: $scope.th.options.search_condition_opts
 			}];
 		
 		if ($scope.list.options.jsonFile)

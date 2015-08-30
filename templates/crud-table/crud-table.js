@@ -53,7 +53,7 @@ crudTable.controller('crudTableCtrl', ['$scope', 'gettext', function($scope, get
 				field: $scope.ct.search_field.field, 
 				condition: $scope.ct.search_field.condition, 
 				value: $scope.ct.search_value,
-				option: $scope.ct.search_field.option
+				options: $scope.ct.search_field.options
 			}];
 		
 		if ($scope.list.options.jsonFile)
