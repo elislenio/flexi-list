@@ -940,6 +940,9 @@ flexiList.directive('flMain', function() {
 flexiList.filter('eq', function() {
 	return function(value, pattern, options) {
 		if (value == undefined || pattern == undefined) return true;
+		
+		if (! options)	return (value == pattern);
+			
 		if (options.insensitive)
 			return (value.toLowerCase() == pattern.toLowerCase());
 		else
