@@ -1,4 +1,4 @@
 # flexi-list
-A flexible and reusable component for data-driven lists with Angular.JS
+A flexible Angular.JS module for creating data-driven lists.
 
 See more in: http://elislenio.github.io/
